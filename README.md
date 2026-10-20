@@ -45,38 +45,18 @@ Anda perlu login SSH ke VPS (yang dulu dipakai chatbot), misalnya `ssh root@IP-V
 
 ## Instalasi di VPS (sekitar 10 menit)
 
-Jalankan di terminal VPS:
+Login ke VPS (`ssh root@IP-VPS`), lalu tempel **satu perintah** ini:
 
 ```bash
-# 1) Ambil kode (repo privat: GitHub akan meminta username + Personal Access Token sebagai password)
-cd ~
-git clone https://github.com/maskit-store/autothreadsmaklon.git
-cd autothreadsmaklon
-
-# 2) Pasang (membuat user sistem, virtualenv, dan service systemd)
-sudo bash deploy/install.sh
-
-# 3) Isi konfigurasi
-sudo nano /opt/autothreads/.env
+apt update && apt install -y git && cd ~ && git clone https://github.com/maskit-store/autothreadsmaklon.git && bash ~/autothreadsmaklon/deploy/install.sh
 ```
 
-Isi minimal di `.env`:
-```
-TELEGRAM_BOT_TOKEN=token dari BotFather
-THREADS_APP_ID=...
-THREADS_APP_SECRET=...
-THREADS_ACCESS_TOKEN=token dari User Token Generator
-ANTHROPIC_API_KEY=sk-ant-...
-```
-Biarkan `TELEGRAM_ADMIN_IDS` kosong dulu. Simpan (Ctrl+O, Enter, Ctrl+X), lalu:
+- Saat git meminta `Username`, isi username GitHub Anda. Saat diminta `Password`, tempel **Personal Access Token** (classic, centang `repo`).
+- Installer lalu menanyakan token satu per satu (Telegram, Threads, Claude) dan **mengecek apakah tiap token valid**.
+- ID Telegram Anda dideteksi otomatis: cukup kirim `/start` ke bot saat diminta.
+- Kalau berhasil, muncul tulisan **"✔ SELESAI!"** dan bot mengirim pesan ke Telegram Anda.
 
-```bash
-sudo systemctl restart autothreads
-```
-
-4) Buka bot Anda di Telegram dan kirim `/start`. Bot akan membalas dengan **ID Telegram** Anda. Masukkan angka itu ke `TELEGRAM_ADMIN_IDS` di `.env`, lalu `sudo systemctl restart autothreads` lagi.
-
-5) Kirim `/status` ke bot. Pastikan akun Threads Anda muncul.
+Untuk mengganti token di kemudian hari: `sudo bash ~/autothreadsmaklon/deploy/install.sh --setup`
 
 ### Isi persona & knowledge base (penting!)
 ```bash

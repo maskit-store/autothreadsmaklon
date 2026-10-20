@@ -1,23 +1,45 @@
 #!/usr/bin/env bash
-# Pasang bot di VPS (Ubuntu/Debian). Jalankan dari folder project: sudo bash deploy/install.sh
+# Pasang / update bot di VPS (Ubuntu/Debian).
+#   Pasang atau update : sudo bash deploy/install.sh
+#   Ubah token/pengaturan: sudo bash deploy/install.sh --setup
 set -euo pipefail
 
 APP_DIR=/opt/autothreads
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+FORCE_SETUP=${1:-}
 
-if [[ $EUID -ne 0 ]]; then echo "Jalankan dengan sudo"; exit 1; fi
+if [[ $EUID -ne 0 ]]; then echo "Jalankan sebagai root (tambahkan sudo di depan perintah)"; exit 1; fi
 
-echo "==> Install paket sistem"
+echo "==> [1/6] Install paket sistem (bisa 1-3 menit)"
+export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip rsync
+apt-get install -y -qq python3 python3-venv python3-pip rsync >/dev/null
 
-PYV=$(python3 -c 'import sys; print(sys.version_info[:2] >= (3, 10))')
-if [[ "$PYV" != "True" ]]; then echo "Butuh Python 3.10+. Versi sekarang: $(python3 --version)"; exit 1; fi
+# Cari Python 3.10+; kalau tidak ada (mis. Ubuntu 20.04), pasang python3.11 dari PPA deadsnakes
+PY=""
+for cand in python3 python3.13 python3.12 python3.11 python3.10; do
+  if command -v "$cand" >/dev/null && "$cand" -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+    PY=$(command -v "$cand"); break
+  fi
+done
+if [[ -z "$PY" ]]; then
+  if grep -qi ubuntu /etc/os-release; then
+    echo "==> Python bawaan terlalu lama ($(python3 --version)), memasang Python 3.11"
+    apt-get install -y -qq software-properties-common >/dev/null
+    add-apt-repository -y ppa:deadsnakes/ppa >/dev/null
+    apt-get update -qq
+    apt-get install -y -qq python3.11 python3.11-venv >/dev/null
+    PY=$(command -v python3.11)
+  else
+    echo "!! Butuh Python 3.10+, versi sekarang: $(python3 --version). Kirim pesan ini ke Claude."; exit 1
+  fi
+fi
+echo "    Python: $($PY --version)"
 
-echo "==> User sistem 'autothreads'"
+echo "==> [2/6] User sistem 'autothreads'"
 id autothreads &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin autothreads
 
-echo "==> Salin kode ke $APP_DIR"
+echo "==> [3/6] Salin kode ke $APP_DIR"
 mkdir -p "$APP_DIR"
 rsync -a --delete \
   --exclude .git --exclude .venv --exclude data --exclude .env \
@@ -30,24 +52,40 @@ done
 [[ -f "$APP_DIR/.env" ]] || cp "$SRC_DIR/.env.example" "$APP_DIR/.env"
 mkdir -p "$APP_DIR/data"
 
-echo "==> Virtualenv & dependency"
-[[ -d "$APP_DIR/.venv" ]] || python3 -m venv "$APP_DIR/.venv"
+echo "==> [4/6] Virtualenv & library (bisa 1-2 menit)"
+if [[ -x "$APP_DIR/.venv/bin/python" ]] && ! "$APP_DIR/.venv/bin/python" -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+  rm -rf "$APP_DIR/.venv"
+fi
+[[ -d "$APP_DIR/.venv" ]] || "$PY" -m venv "$APP_DIR/.venv"
 "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
 "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
+echo "==> [5/6] Pengaturan token"
+systemctl stop autothreads 2>/dev/null || true   # supaya wizard bisa membaca pesan /start di Telegram
+if [[ "$FORCE_SETUP" == "--setup" ]] || grep -qE '^(TELEGRAM_BOT_TOKEN|TELEGRAM_ADMIN_IDS|THREADS_ACCESS_TOKEN|ANTHROPIC_API_KEY)=$' "$APP_DIR/.env"; then
+  "$APP_DIR/.venv/bin/python" "$APP_DIR/deploy/setup_wizard.py" "$APP_DIR/.env" < /dev/tty
+else
+  echo "    Sudah terisi (ubah dengan: sudo bash deploy/install.sh --setup)"
+fi
 chown -R autothreads:autothreads "$APP_DIR"
 chmod 600 "$APP_DIR/.env"
 
-echo "==> Service systemd"
+echo "==> [6/6] Menyalakan bot"
 cp "$APP_DIR/deploy/autothreads.service" /etc/systemd/system/autothreads.service
 systemctl daemon-reload
-systemctl enable autothreads >/dev/null
-
-if grep -qE '^(TELEGRAM_BOT_TOKEN|ANTHROPIC_API_KEY)=$' "$APP_DIR/.env"; then
+systemctl enable autothreads >/dev/null 2>&1
+systemctl restart autothreads
+sleep 8
+if systemctl is-active --quiet autothreads; then
   echo
-  echo "!! .env belum lengkap. Edit dulu:  sudo nano $APP_DIR/.env"
-  echo "   lalu jalankan:                 sudo systemctl restart autothreads"
+  echo "=================================================================="
+  echo " ✔ SELESAI! Bot sudah berjalan 24 jam (mode uji / DRY_RUN)."
+  echo "   Cek Telegram Anda: harusnya ada pesan 'Bot Threads aktif'."
+  echo "   Kirim /status ke bot untuk memastikan akun Threads terhubung."
+  echo "=================================================================="
 else
-  systemctl restart autothreads
-  echo "==> Bot berjalan. Cek log:  sudo journalctl -u autothreads -f"
+  echo
+  echo "!! Bot gagal menyala. Log terakhir (kirim ke Claude, tanpa token):"
+  journalctl -u autothreads -n 30 --no-pager
+  exit 1
 fi

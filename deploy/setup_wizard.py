@@ -2,6 +2,7 @@
 
 Dipanggil oleh deploy/install.sh. Bisa diulang kapan saja: sudo bash deploy/install.sh --setup
 """
+import getpass
 import sys
 from pathlib import Path
 
@@ -34,16 +35,27 @@ def write_env(updates: dict):
     ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def ask(label: str, current: str, check=None, secret_hint: str = "") -> str:
+def mask(value: str) -> str:
+    return value[:4] + "…" + value[-3:] if len(value) > 10 else "***"
+
+
+def ask(label: str, current: str, check=None, secret_hint: str = "", secret: bool = True) -> str:
     """Tanya nilai sampai valid. Enter kosong = pakai nilai lama (kalau ada)."""
     while True:
         hint = f" {YELLOW}(sudah terisi, tekan Enter untuk memakai yang lama){END}" if current else ""
         print(f"\n{BOLD}{label}{END}{hint}")
         if secret_hint:
             print(f"  {secret_hint}")
-        value = input("  > ").strip().strip('"').strip("'")
+        if secret:
+            # input rahasia tidak ditampilkan supaya aman kalau layar di-screenshot
+            raw = getpass.getpass("  > (tempel lalu Enter, isian tidak terlihat di layar) ")
+        else:
+            raw = input("  > ")
+        value = raw.strip().strip('"').strip("'")
         if not value and current:
             value = current
+        if value and secret:
+            print(f"  diterima: {mask(value)} ({len(value)} karakter)")
         if not value:
             print(f"  {RED}Tidak boleh kosong.{END}")
             continue
@@ -116,7 +128,7 @@ def main():
              "Bentuknya seperti 7123456789:AAHxxxxxxxx")
     admin = detect_admin(tg, env.get("TELEGRAM_ADMIN_IDS", ""))
     app_id = ask("3/6  Threads App ID", env.get("THREADS_APP_ID", ""), None,
-                 "Meta Developer > Use cases > Access the Threads API > Customize > Settings")
+                 "Meta Developer > Use cases > Access the Threads API > Customize > Settings", secret=False)
     secret = ask("4/6  Threads App Secret", env.get("THREADS_APP_SECRET", ""), None,
                  "Di halaman yang sama, klik 'Show' di sebelah Threads app secret")
     th = ask("5/6  Threads access token (dari User Token Generator)", env.get("THREADS_ACCESS_TOKEN", ""),

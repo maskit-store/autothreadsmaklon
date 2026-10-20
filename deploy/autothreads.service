@@ -1,0 +1,16 @@
+[Unit]
+Description=Auto Threads bot (Telegram control + Claude)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=autothreads
+WorkingDirectory=/opt/autothreads
+ExecStart=/opt/autothreads/.venv/bin/python -m app
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

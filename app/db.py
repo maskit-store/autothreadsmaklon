@@ -216,10 +216,11 @@ def count_published(account_id: int, kind: str, since: str) -> int:
 
 
 def count_created(account_id: int, kind: str, since: str) -> int:
-    """Termasuk yang masih antri, untuk membatasi jumlah draft yang dibuat."""
+    """Termasuk yang masih antri, untuk membatasi jumlah draft yang dibuat. Hasil mode uji tidak dihitung."""
     with conn() as c:
         return c.execute(
-            "SELECT COUNT(*) FROM outbox WHERE account_id=? AND kind=? AND status!='rejected' AND created_at>=?",
+            """SELECT COUNT(*) FROM outbox WHERE account_id=? AND kind=? AND status!='rejected' AND created_at>=?
+               AND COALESCE(threads_media_id, '') != 'DRY_RUN'""",
             (account_id, kind, since),
         ).fetchone()[0]
 

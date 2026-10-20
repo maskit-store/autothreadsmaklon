@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS outbox (
     context TEXT,                    -- teks asli yang dibalas / topik
     status TEXT NOT NULL,            -- pending | approved | publishing | published | failed | rejected
     escalated INTEGER NOT NULL DEFAULT 0,
+    topic_tag TEXT,                  -- topik Threads (hanya untuk post)
     threads_media_id TEXT,
     permalink TEXT,
     error TEXT,
@@ -88,6 +89,9 @@ def conn():
 def init():
     with conn() as c:
         c.executescript(SCHEMA)
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(outbox)")}
+        if "topic_tag" not in cols:  # database lama sebelum fitur topik
+            c.execute("ALTER TABLE outbox ADD COLUMN topic_tag TEXT")
         # item yang terputus saat proses publish (mis. server restart) jangan diterbitkan ulang otomatis
         c.execute("UPDATE outbox SET status='failed', error='terputus saat publish, cek manual' WHERE status='publishing'")
 
@@ -155,12 +159,12 @@ def delete_by_threads_id(user_id: str):
 # ---------- outbox ----------
 
 def add_outbox(account_id: int, kind: str, text: str, status: str, reply_to_id=None, context=None,
-               escalated: bool = False) -> int:
+               escalated: bool = False, topic_tag: str | None = None) -> int:
     with conn() as c:
         cur = c.execute(
-            """INSERT INTO outbox(account_id, kind, text, reply_to_id, context, status, escalated, created_at)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (account_id, kind, text, reply_to_id, context, status, int(escalated), now()),
+            """INSERT INTO outbox(account_id, kind, text, reply_to_id, context, status, escalated, topic_tag, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (account_id, kind, text, reply_to_id, context, status, int(escalated), topic_tag, now()),
         )
         return cur.lastrowid
 
@@ -285,6 +289,17 @@ def set_setting(key: str, value: str):
     with conn() as c:
         c.execute("INSERT INTO settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   (key, value))
+
+
+def clean_topic(tag: str) -> str:
+    """Aturan Threads: 1-50 karakter, tanpa titik dan &."""
+    return " ".join(tag.strip().lstrip("#").replace(".", "").replace("&", "").split())[:50]
+
+
+def topic_tags() -> list[str]:
+    saved = get_setting("topic_tags")
+    tags = saved.split(",") if saved else config.TOPIC_TAGS
+    return [t for t in (clean_topic(x) for x in tags) if t]
 
 
 def is_dry_run() -> bool:

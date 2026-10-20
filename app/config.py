@@ -51,6 +51,8 @@ AUTO_COMMENT_ENABLED = _bool("AUTO_COMMENT_ENABLED", False)
 AUTO_RESEARCH_ENABLED = _bool("AUTO_RESEARCH_ENABLED", True)
 
 NICHE_KEYWORDS = _list("NICHE_KEYWORDS")
+# Pilihan topik Threads (tampil di atas post: akun > topik). Bisa diubah dari Telegram: /topik
+TOPIC_TAGS = _list("TOPIC_TAGS", "maklon,skincare,bisnis skincare,brand lokal,kosmetik")
 TRENDS_GEO = os.getenv("TRENDS_GEO", "ID")
 
 DB_PATH = BASE_DIR / os.getenv("DB_PATH", "data/autothreads.db")

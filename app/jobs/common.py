@@ -18,7 +18,8 @@ def publish_item(item_id: int) -> bool:
         return True
 
     try:
-        media_id = threads_api.publish_text(acc["threads_user_id"], acc["access_token"], item["text"], item["reply_to_id"])
+        media_id = threads_api.publish_text(acc["threads_user_id"], acc["access_token"], item["text"], item["reply_to_id"],
+                                            item["topic_tag"])
         link = threads_api.permalink(media_id, acc["access_token"])
         db.update_outbox(item_id, status="published", threads_media_id=media_id, permalink=link,
                          published_at=db.now(), error=None)
@@ -44,14 +45,14 @@ def under_limit(account_id: int, kind: str) -> bool:
 
 
 def queue_or_publish(account_id: int, kind: str, text: str, reply_to_id=None, context=None,
-                     escalated: bool = False, force_approval: bool = False) -> int:
+                     escalated: bool = False, force_approval: bool = False, topic_tag: str | None = None) -> int:
     need_approval = force_approval or escalated or {
         "post": config.REQUIRE_APPROVAL_POSTS,
         "reply": config.REQUIRE_APPROVAL_REPLIES,
         "comment": config.REQUIRE_APPROVAL_COMMENTS,
     }[kind]
     item_id = db.add_outbox(account_id, kind, text, "pending" if need_approval else "approved", reply_to_id, context,
-                            escalated)
+                            escalated, topic_tag)
     if need_approval:
         db.log("info", f"{kind} #{item_id} menunggu persetujuan di Telegram")
         notify.ask_approval(item_id)

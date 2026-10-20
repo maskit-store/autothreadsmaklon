@@ -6,8 +6,8 @@ from . import research
 def from_idea(idea: str):
     """Post dari ide yang dikirim admin lewat Telegram (/post ...). Selalu minta persetujuan."""
     for acc in db.active_accounts():
-        text = llm.write_post(idea, "", db.recent_post_texts(acc["id"]))
-        queue_or_publish(acc["id"], "post", text, context=idea, force_approval=True)
+        text, tag = llm.write_post(idea, "", db.recent_post_texts(acc["id"]), db.topic_tags())
+        queue_or_publish(acc["id"], "post", text, context=idea, force_approval=True, topic_tag=tag)
 
 
 def run(account_id: int | None = None):
@@ -25,8 +25,8 @@ def run(account_id: int | None = None):
             db.log("info", f"autopost @{acc['username']}: batas harian tercapai")
             continue
         try:
-            text = llm.write_post(trend["title"], trend["angle"], db.recent_post_texts(acc["id"]))
-            queue_or_publish(acc["id"], "post", text, context=trend["title"])
+            text, tag = llm.write_post(trend["title"], trend["angle"], db.recent_post_texts(acc["id"]), db.topic_tags())
+            queue_or_publish(acc["id"], "post", text, context=trend["title"], topic_tag=tag)
         except Exception as e:
             db.log("error", f"autopost @{acc['username']} gagal: {e}")
     db.mark_trend_used(trend["id"])

@@ -18,6 +18,7 @@ HELP = """<b>Perintah</b>
 <b>Data bisnis &amp; gaya bahasa</b>
 /data – lihat data bisnis (layanan, MOQ, kontak, FAQ)
 /ubahdata &lt;info&gt; – tambah/ubah data bisnis dengan bahasa biasa
+/topik – lihat / ubah pilihan topik Threads
 /gaya – lihat panduan gaya bahasa
 /ubahgaya &lt;info&gt; – ubah gaya bahasa / aturan tulisan
 
@@ -160,6 +161,16 @@ def handle_command(chat_id: int, text: str):
                             else "gaya bahasa lebih santai, sapa dengan kak") + "</i>")
         reply(chat_id, "⏳ Merapikan dokumen...")
         _bg(chat_id, "Penyusunan dokumen", update_doc, chat_id, key, arg, quiet=True)
+    elif cmd == "/topik":
+        if arg:
+            tags = [t for t in (db.clean_topic(x) for x in arg.split(",")) if t]
+            if not tags:
+                return reply(chat_id, "Topik tidak valid.")
+            db.set_setting("topic_tags", ",".join(tags))
+            return reply(chat_id, "✅ Pilihan topik disimpan: " + ", ".join(f"<b>{notify.esc(t)}</b>" for t in tags))
+        reply(chat_id, "🏷️ Pilihan topik sekarang: " + ", ".join(f"<b>{notify.esc(t)}</b>" for t in db.topic_tags())
+              + "\n\nAI memilih satu yang paling cocok untuk setiap post (tampil: akun &gt; topik).\n"
+                "Ubah dengan: <i>/topik maklon, skincare, bisnis skincare</i>")
     elif cmd == "/live":
         if not db.is_dry_run():
             return reply(chat_id, "Sudah dalam mode 🟢 LIVE.")
@@ -241,7 +252,8 @@ def handle_callback(cb: dict):
         _waiting_revision[chat_id] = item["id"]
         reply(chat_id, f"✏️ Kirim instruksi revisi untuk #{item['id']}.\n"
                        "Contoh: <i>lebih singkat, tambah ajakan DM</i>\n"
-                       "Atau kirim teks pengganti lengkap diawali tanda = (contoh: <i>=Halo kak...</i>)")
+                       "Atau kirim teks pengganti lengkap diawali tanda = (contoh: <i>=Halo kak...</i>)"
+                       + ("\nUntuk mengganti topik, kirim diawali # (contoh: <i>#maklon</i>)" if item["kind"] == "post" else ""))
     notify.call("answerCallbackQuery", callback_query_id=cb["id"])
 
 
@@ -274,6 +286,10 @@ def handle_revision(chat_id: int, text: str):
     item = db.get_outbox(item_id)
     if not item or item["status"] not in ("pending", "failed"):
         return reply(chat_id, "Draf ini sudah tidak bisa direvisi.")
+    if text.startswith("#") and item["kind"] == "post":
+        tag = db.clean_topic(text)
+        db.update_outbox(item_id, topic_tag=tag or None, status="pending")
+        return notify.ask_approval(item_id)
     if text.startswith("="):
         new_text = text[1:].strip()
     else:
@@ -314,7 +330,7 @@ def run_forever():
                      ("/tren", "Lihat topik tren"), ("/autopost", "Draf post dari tren teratas"),
                      ("/balas", "Cek & balas komentar"), ("/komentar", "Komentar ke post orang"),
                      ("/antrian", "Draf menunggu persetujuan"), ("/status", "Status bot"),
-                     ("/data", "Lihat data bisnis"), ("/ubahdata", "Ubah data bisnis"),
+                     ("/topik", "Pilihan topik Threads"), ("/data", "Lihat data bisnis"), ("/ubahdata", "Ubah data bisnis"),
                      ("/gaya", "Lihat gaya bahasa"), ("/ubahgaya", "Ubah gaya bahasa"),
                      ("/live", "Mulai posting sungguhan"), ("/uji", "Kembali ke mode uji"),
                      ("/pause", "Hentikan otomatisasi"), ("/resume", "Jalankan lagi"),

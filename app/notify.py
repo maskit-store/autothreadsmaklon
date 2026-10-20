@@ -42,8 +42,10 @@ def item_text(item) -> str:
         head = "🚨 PERLU ADMIN · " + head
     parts = [f"<b>{head}</b> #{item['id']} · @{esc(acc['username'] if acc else '?')}"]
     if item["context"]:
-        label = "Topik" if item["kind"] == "post" else "Membalas"
+        label = "Ide" if item["kind"] == "post" else "Membalas"
         parts.append(f"<i>{label}:</i> {esc(item['context'][:600])}")
+    if item["topic_tag"]:
+        parts.append(f"🏷️ Topik: <b>{esc(item['topic_tag'])}</b>")
     parts.append(f"\n{esc(item['text'])}")
     parts.append(f"\n<i>{len(item['text'])}/500 karakter</i>")
     return "\n".join(parts)

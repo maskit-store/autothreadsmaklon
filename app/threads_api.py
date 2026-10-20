@@ -144,11 +144,14 @@ def publishing_limit(user_id: str, token: str) -> dict:
     return (data.get("data") or [{}])[0]
 
 
-def publish_text(user_id: str, token: str, text: str, reply_to_id: str | None = None) -> str:
+def publish_text(user_id: str, token: str, text: str, reply_to_id: str | None = None,
+                 topic_tag: str | None = None) -> str:
     """Buat container lalu publish. Return media id post yang terbit."""
     params = {"media_type": "TEXT", "text": text[:500]}
     if reply_to_id:
         params["reply_to_id"] = reply_to_id
+    if topic_tag:
+        params["topic_tag"] = topic_tag
     creation_id = _post(f"{user_id}/threads", token, **params)["id"]
     last_err = None
     for wait in (2, 5, 10, 20):

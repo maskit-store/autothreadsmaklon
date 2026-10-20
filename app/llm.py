@@ -59,8 +59,12 @@ def _obj(props: dict) -> dict:
 TEXT_ONLY = _obj({"text": {"type": "string"}})
 
 
-def write_post(topic: str, angle: str, recent_posts: list[str]) -> str:
+def write_post(topic: str, angle: str, recent_posts: list[str], topic_tags: list[str]) -> tuple[str, str | None]:
+    """Return (teks post, topik Threads yang dipilih dari topic_tags)."""
     recent = "\n---\n".join(recent_posts) or "(belum ada)"
+    schema = {"text": {"type": "string"}}
+    if topic_tags:
+        schema["topic_tag"] = {"type": "string", "enum": topic_tags}
     out = _ask(config.CLAUDE_MODEL_WRITER, f"""Buat SATU post Threads baru.
 
 Topik/ide: {topic}
@@ -69,11 +73,14 @@ Sudut pandang yang disarankan: {angle or '-'}
 Hubungkan topik ini secara natural dengan niche brand (jangan dipaksakan). Variasikan format:
 tips singkat, opini, pertanyaan pemancing diskusi, cerita pendek, atau list.
 
+Jangan menaruh hashtag di teks; topik Threads diisi terpisah lewat field topic_tag
+(pilih yang paling relevan dengan isi post).
+
 Post terakhir kita (JANGAN mengulang ide/kalimat pembuka yang sama):
 <recent>
 {recent}
-</recent>""", TEXT_ONLY)
-    return out["text"].strip()
+</recent>""", _obj(schema))
+    return out["text"].strip(), out.get("topic_tag")
 
 
 def write_reply(my_post: str, their_comment: str, username: str, thread_context: str = "") -> dict:

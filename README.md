@@ -88,6 +88,9 @@ AI hanya menjawab berdasarkan `knowledge.md`. Kalau infonya tidak ada di sana, A
 | `/komentar` | Cari post orang & buat draf komentar |
 | `/antrian` | Tampilkan draf yang menunggu persetujuan |
 | `/status` | Mode, akun, kuota API, statistik 24 jam |
+| `/data` · `/ubahdata <info>` | Lihat / ubah data bisnis (layanan, MOQ, kontak, FAQ) dengan bahasa biasa |
+| `/gaya` · `/ubahgaya <info>` | Lihat / ubah panduan gaya bahasa |
+| `/live` · `/uji` | Mulai posting sungguhan / kembali ke mode uji |
 | `/pause` · `/resume` | Hentikan / jalankan lagi semua otomatisasi |
 | `/token <token>` | Hubungkan / perbarui token Threads (lalu hapus pesan berisi token) |
 | `/log` | 15 log terakhir |

@@ -11,7 +11,7 @@ def publish_item(item_id: int) -> bool:
         db.update_outbox(item_id, status="failed", error="akun tidak aktif")
         return False
 
-    if config.DRY_RUN:
+    if db.is_dry_run():
         db.update_outbox(item_id, status="published", published_at=db.now(), threads_media_id="DRY_RUN")
         db.log("info", f"[DRY_RUN] {item['kind']} @{acc['username']}: {item['text'][:80]}")
         notify.to_admins(f"🧪 [DRY_RUN] {item['kind']} #{item_id} dianggap terbit (tidak benar-benar diposting).")

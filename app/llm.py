@@ -131,6 +131,28 @@ Kalau instruksi berisi teks pengganti lengkap, pakai teks itu apa adanya (rapika
     return out["text"].strip()
 
 
+def update_doc(doc_name: str, current: str, instruction: str) -> str:
+    """Perbarui knowledge base / persona berdasarkan instruksi admin (bahasa bebas)."""
+    out = _ask(config.CLAUDE_MODEL_WRITER, f"""Admin ingin memperbarui dokumen "{doc_name}" milik bot Threads.
+
+Dokumen saat ini:
+<document>
+{current}
+</document>
+
+Instruksi / info baru dari admin:
+<instruction>
+{instruction}
+</instruction>
+
+Tulis ulang dokumen LENGKAP dengan perubahan tersebut. Aturan:
+- Pertahankan struktur heading Markdown yang ada; masukkan info baru ke bagian yang paling cocok.
+- Ganti placeholder seperti "(ISI)", "(ISI SESUAI)", "...", atau "08xx" kalau admin memberi datanya.
+- Jangan menghapus info lama kecuali admin memintanya atau info itu bertentangan dengan yang baru.
+- Jangan menambah fakta yang tidak diberikan admin.""", TEXT_ONLY, max_tokens=16000)
+    return out["text"].strip() + "\n"
+
+
 def pick_trends(google_trends: list[str], threads_posts: list[dict], keywords: list[str]) -> list[dict]:
     gt = "\n".join(f"- {t}" for t in google_trends) or "(tidak ada data)"
     tp = "\n".join(f"- [{p.get('keyword')}] {(p.get('text') or '')[:280]}" for p in threads_posts) or "(tidak ada data)"

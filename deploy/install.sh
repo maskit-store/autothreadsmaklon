@@ -43,7 +43,7 @@ echo "==> [3/6] Salin kode ke $APP_DIR"
 mkdir -p "$APP_DIR"
 rsync -a --delete \
   --exclude .git --exclude .venv --exclude data --exclude .env \
-  --exclude persona.md --exclude knowledge.md \
+  --exclude persona.md --exclude knowledge.md --exclude '*.bak' \
   "$SRC_DIR/" "$APP_DIR/"
 # persona & knowledge hanya disalin pertama kali supaya hasil edit Anda di VPS tidak tertimpa
 for f in persona.md knowledge.md; do

@@ -14,6 +14,16 @@ HELP = """<b>Perintah</b>
 /komentar – cari post orang &amp; buat draf komentar
 /antrian – tampilkan draf yang menunggu persetujuan
 /status – status akun, kuota, mode
+
+<b>Data bisnis &amp; gaya bahasa</b>
+/data – lihat data bisnis (layanan, MOQ, kontak, FAQ)
+/ubahdata &lt;info&gt; – tambah/ubah data bisnis dengan bahasa biasa
+/gaya – lihat panduan gaya bahasa
+/ubahgaya &lt;info&gt; – ubah gaya bahasa / aturan tulisan
+
+<b>Mode</b>
+/live – mulai posting sungguhan ke Threads
+/uji – kembali ke mode uji (tidak posting)
 /pause – hentikan semua otomatisasi
 /resume – jalankan lagi
 /token &lt;access_token&gt; – hubungkan / perbarui akun Threads
@@ -21,17 +31,49 @@ HELP = """<b>Perintah</b>
 
 # admin chat_id -> item_id yang sedang direvisi
 _waiting_revision: dict[int, int] = {}
+# admin chat_id -> (nama dokumen, path, isi baru) yang menunggu konfirmasi simpan
+_pending_doc: dict[int, tuple] = {}
+
+DOCS = {
+    "data": ("Data bisnis (knowledge base)", config.KNOWLEDGE_FILE),
+    "gaya": ("Gaya bahasa (persona)", config.PERSONA_FILE),
+}
 
 
-def _bg(chat_id: int, label: str, fn, *args):
+def _bg(chat_id: int, label: str, fn, *args, quiet: bool = False):
     def run():
         try:
             fn(*args)
-            notify.call("sendMessage", chat_id=chat_id, text=f"✔️ {label} selesai.")
+            if not quiet:
+                notify.call("sendMessage", chat_id=chat_id, text=f"✔️ {label} selesai.")
         except Exception as e:
             db.log("error", f"{label}: {e}")
             notify.call("sendMessage", chat_id=chat_id, text=f"⚠️ {label} gagal: {e}")
     threading.Thread(target=run, daemon=True).start()
+
+
+def send_long(chat_id: int, text: str):
+    """Kirim teks panjang (tanpa format HTML) dipotong per 3500 karakter."""
+    chunk = ""
+    for line in text.splitlines(keepends=True):
+        if len(chunk) + len(line) > 3500:
+            notify.call("sendMessage", chat_id=chat_id, text=chunk)
+            chunk = ""
+        chunk += line
+    if chunk.strip():
+        notify.call("sendMessage", chat_id=chat_id, text=chunk)
+
+
+def update_doc(chat_id: int, key: str, instruction: str):
+    name, path = DOCS[key]
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    new = llm.update_doc(name, current, instruction)
+    _pending_doc[chat_id] = (key, new)
+    send_long(chat_id, new)
+    reply(chat_id, f"👆 Ini {name} versi baru. Simpan?", [[
+        {"text": "💾 Simpan", "callback_data": "docok:0"},
+        {"text": "❌ Batal", "callback_data": "docno:0"},
+    ]])
 
 
 def reply(chat_id: int, text: str, buttons=None):
@@ -104,6 +146,30 @@ def handle_command(chat_id: int, text: str):
             reply(chat_id, f"✅ Akun @{notify.esc(username)} terhubung. Hapus pesan berisi token tadi dari chat ini.")
         except Exception as e:
             reply(chat_id, f"⚠️ Token gagal dipakai: {notify.esc(e)}")
+    elif cmd in ("/data", "/gaya"):
+        name, path = DOCS[cmd[1:]]
+        send_long(chat_id, path.read_text(encoding="utf-8") if path.exists() else "(kosong)")
+        reply(chat_id, f"Untuk mengubah {name}, kirim /ubah{cmd[1:]} diikuti info baru.\n"
+                       f"Contoh: <i>/ubah{cmd[1:]} " + ("MOQ 100 pcs, WA admin 0812-3456-7890, bisa sampel dulu"
+                       if cmd == "/data" else "pakai sapaan kak, jangan pakai emoji") + "</i>")
+    elif cmd in ("/ubahdata", "/ubahgaya"):
+        key = cmd[5:]
+        if not arg:
+            return reply(chat_id, f"Tulis infonya setelah perintah. Contoh: <i>{cmd} "
+                         + ("layanan kami serum, toner, sunscreen. MOQ 100 pcs" if key == "data"
+                            else "gaya bahasa lebih santai, sapa dengan kak") + "</i>")
+        reply(chat_id, "⏳ Merapikan dokumen...")
+        _bg(chat_id, "Penyusunan dokumen", update_doc, chat_id, key, arg, quiet=True)
+    elif cmd == "/live":
+        if not db.is_dry_run():
+            return reply(chat_id, "Sudah dalam mode 🟢 LIVE.")
+        reply(chat_id, "⚠️ Mode LIVE: draf yang kamu ✅ akan <b>benar-benar terbit</b> di Threads, dan balasan/"
+                       "komentar yang tidak butuh persetujuan akan langsung terkirim. Lanjut?",
+              [[{"text": "🟢 Ya, mulai live", "callback_data": "live:1"},
+                {"text": "Batal", "callback_data": "live:0"}]])
+    elif cmd == "/uji":
+        db.set_setting("dry_run", "1")
+        reply(chat_id, "🧪 Kembali ke mode uji. Tidak ada yang diposting ke Threads.")
     elif cmd == "/log":
         rows = db.recent_logs(15)
         reply(chat_id, "\n".join(f"{r['created_at'][11:16]} [{r['level']}] {notify.esc(r['message'][:200])}"
@@ -122,7 +188,7 @@ def _send_trends(chat_id: int):
 
 
 def _send_status(chat_id: int):
-    lines = [f"Mode: {'🧪 DRY_RUN (tidak benar-benar posting)' if config.DRY_RUN else '🟢 LIVE'}",
+    lines = [f"Mode: {'🧪 DRY_RUN (tidak benar-benar posting)' if db.is_dry_run() else '🟢 LIVE'}",
              f"Otomatisasi: {'⏸️ pause' if db.is_paused() else '▶️ jalan'}",
              f"Approval: post={config.REQUIRE_APPROVAL_POSTS}, balasan={config.REQUIRE_APPROVAL_REPLIES}, "
              f"komentar={config.REQUIRE_APPROVAL_COMMENTS}",
@@ -149,6 +215,9 @@ def handle_callback(cb: dict):
     chat_id = cb["message"]["chat"]["id"]
     message_id = cb["message"]["message_id"]
     action, _, raw_id = cb.get("data", "").partition(":")
+    if action in ("docok", "docno", "live"):
+        notify.call("answerCallbackQuery", callback_query_id=cb["id"])
+        return handle_setting_callback(chat_id, message_id, action, raw_id)
     item = db.get_outbox(int(raw_id)) if raw_id.isdigit() else None
     if not item:
         return notify.call("answerCallbackQuery", callback_query_id=cb["id"], text="Item tidak ditemukan")
@@ -174,6 +243,30 @@ def handle_callback(cb: dict):
                        "Contoh: <i>lebih singkat, tambah ajakan DM</i>\n"
                        "Atau kirim teks pengganti lengkap diawali tanda = (contoh: <i>=Halo kak...</i>)")
     notify.call("answerCallbackQuery", callback_query_id=cb["id"])
+
+
+def handle_setting_callback(chat_id: int, message_id: int, action: str, value: str):
+    def done(text: str):
+        notify.call("editMessageText", chat_id=chat_id, message_id=message_id, text=text)
+
+    if action == "live":
+        if value == "1":
+            db.set_setting("dry_run", "0")
+            db.log("info", "mode LIVE diaktifkan dari Telegram")
+            return done("🟢 Mode LIVE aktif. Kembali ke mode uji kapan saja dengan /uji")
+        return done("Dibatalkan, tetap mode uji.")
+    pending = _pending_doc.pop(chat_id, None)
+    if not pending:
+        return done("Tidak ada perubahan yang menunggu.")
+    if action == "docno":
+        return done("❌ Perubahan dibatalkan.")
+    key, new = pending
+    name, path = DOCS[key]
+    if path.exists():
+        path.with_suffix(".md.bak").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    path.write_text(new, encoding="utf-8")
+    db.log("info", f"{name} diperbarui dari Telegram")
+    done(f"💾 {name} disimpan dan langsung dipakai untuk tulisan berikutnya.")
 
 
 def handle_revision(chat_id: int, text: str):
@@ -221,10 +314,13 @@ def run_forever():
                      ("/tren", "Lihat topik tren"), ("/autopost", "Draf post dari tren teratas"),
                      ("/balas", "Cek & balas komentar"), ("/komentar", "Komentar ke post orang"),
                      ("/antrian", "Draf menunggu persetujuan"), ("/status", "Status bot"),
+                     ("/data", "Lihat data bisnis"), ("/ubahdata", "Ubah data bisnis"),
+                     ("/gaya", "Lihat gaya bahasa"), ("/ubahgaya", "Ubah gaya bahasa"),
+                     ("/live", "Mulai posting sungguhan"), ("/uji", "Kembali ke mode uji"),
                      ("/pause", "Hentikan otomatisasi"), ("/resume", "Jalankan lagi"),
                      ("/log", "Log terakhir"), ("/help", "Bantuan")]
     ])
-    notify.to_admins(f"🤖 Bot Threads aktif ({'DRY_RUN' if config.DRY_RUN else 'LIVE'}). /status untuk cek.")
+    notify.to_admins(f"🤖 Bot Threads aktif ({'DRY_RUN' if db.is_dry_run() else 'LIVE'}). /status untuk cek.")
     offset = None
     while True:
         try:

@@ -33,5 +33,5 @@ def start() -> BackgroundScheduler:
     s.add_job(_safe("publish_approved", common.publish_approved, pausable=False), "interval", minutes=2, id="publish_approved")
     s.add_job(_safe("refresh_tokens", tokens.refresh_all, pausable=False), CronTrigger(hour=3, minute=17), id="refresh_tokens")
     s.start()
-    db.log("info", f"scheduler jalan: {[j.id for j in s.get_jobs()]} (DRY_RUN={config.DRY_RUN})")
+    db.log("info", f"scheduler jalan: {[j.id for j in s.get_jobs()]} (DRY_RUN={db.is_dry_run()})")
     return s

@@ -287,6 +287,11 @@ def set_setting(key: str, value: str):
                   (key, value))
 
 
+def is_dry_run() -> bool:
+    """Mode uji. Bisa diubah dari Telegram (/live, /uji); default dari DRY_RUN di .env."""
+    return get_setting("dry_run", "1" if config.DRY_RUN else "0") == "1"
+
+
 def is_paused() -> bool:
     return get_setting("paused", "0") == "1"
 
